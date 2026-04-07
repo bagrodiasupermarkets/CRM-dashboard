@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -478,17 +479,23 @@ async function loadAndProcess(){
   setProgress(10);
 
   let csvText;
+  // Try multiple methods to fetch CSV
+  const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSWxiti_3lTjWv-fx_apdx-oPk6Bs8Rzinzlad3jlFDrXiTNgEOlwd6EYmUxDBRpt77B8K125qy-ZY_/pub?output=csv';
+  const PROXY = 'https://corsproxy.io/?';
   try{
-    // Use Google Apps Script server-side fetch
-    csvText = await new Promise((resolve, reject) => {
-      google.script.run
-        .withSuccessHandler(data => {
-          if(data.startsWith('ERROR:')) reject(new Error(data));
-          else resolve(data);
-        })
-        .withFailureHandler(err => reject(err))
-        .getCSVData();
-    });
+    // First try direct fetch
+    let resp;
+    try{
+      resp = await fetch(CSV_URL);
+      if(!resp.ok) throw new Error('direct failed');
+      csvText = await resp.text();
+    } catch(e1){
+      // Fall back to CORS proxy
+      setProgress(15,'Using proxy connection...');
+      resp = await fetch(PROXY + encodeURIComponent(CSV_URL));
+      if(!resp.ok) throw new Error('proxy failed: HTTP '+resp.status);
+      csvText = await resp.text();
+    }
   }catch(e){
     showError('Could not load Google Sheet. Check internet connection and make sure the sheet is published as CSV. Error: '+e.message);
     return null;
@@ -883,18 +890,10 @@ function pp(k){
   pin+=k;updDots();
   if(pin.length===4){
     if(pin===CORRECT){
-      showLoader('Fetching data from Google Sheet...');
-      loadAndProcess().then(data=>{
-        if(!data)return;
-        window.D=data;
-        window.MONTHS=D.meta.months;
-        window.DAY=D.meta.dayOfMonth;
-        window.SHOW_MISSING=D.meta.showMissingTab;
-        window.INCLUDE_APR=D.meta.includeCurrentMonth;
-        document.getElementById('app').style.display='flex';
-        document.getElementById('t-date').textContent='Refreshed: '+D.meta.lastRefreshed+' · '+D.meta.rowsProcessed.toLocaleString()+' rows';
-        renderOV();renderList();
-      });
+      document.getElementById('pin-screen').style.display='none';
+      document.getElementById('app').style.display='flex';
+      document.getElementById('t-date').textContent=new Date().toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+      renderOV();renderList();
     } else {
       err.textContent='Incorrect PIN. Try again.';
       setTimeout(()=>{pin='';updDots();},700);
